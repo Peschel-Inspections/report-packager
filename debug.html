@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Auth Debug — Peschel Inspections</title>
+<style>
+  body { font-family: monospace; padding: 2rem; background: #f5f5f5; }
+  .card { background: white; border-radius: 8px; padding: 1.5rem; max-width: 700px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  h2 { margin-bottom: 1rem; font-size: 16px; }
+  .row { margin-bottom: 8px; font-size: 13px; word-break: break-all; }
+  .label { font-weight: bold; color: #333; }
+  .val { color: #0078D4; }
+  .val.none { color: #999; font-style: italic; }
+  .val.err { color: #c0392b; }
+  .val.ok { color: #1a7f37; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 6px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin-top: 1rem; }
+  .btn { display: inline-block; margin-top: 1rem; padding: 10px 20px; background: #0078D4; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .btn:hover { background: #006BBD; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>🔍 Auth Debug Page — Peschel Inspections</h2>
+
+  <div class="row"><span class="label">Current URL: </span><span class="val" id="currentUrl"></span></div>
+  <div class="row"><span class="label">Origin: </span><span class="val" id="origin"></span></div>
+  <div class="row"><span class="label">Pathname: </span><span class="val" id="pathname"></span></div>
+  <div class="row"><span class="label">Hash present: </span><span class="val" id="hashPresent"></span></div>
+  <div class="row"><span class="label">access_token found: </span><span class="val" id="tokenFound"></span></div>
+  <div class="row"><span class="label">error found: </span><span class="val" id="errorFound"></span></div>
+  <div class="row"><span class="label">Token (first 60 chars): </span><span class="val" id="tokenPreview"></span></div>
+  <div class="row"><span class="label">Redirect URI that will be sent: </span><span class="val" id="redirectUri"></span></div>
+
+  <pre id="fullHash"></pre>
+
+  <button class="btn" onclick="trySignIn()">Try sign-in from this page</button>
+</div>
+
+<script>
+const CLIENT_ID = '5e13bcf8-9861-419d-b3f2-5566be1e3948';
+const TENANT_ID = 'peschelinspections.onmicrosoft.com';
+const SCOPES    = 'openid profile User.Read Sites.Read.All';
+
+const hash = window.location.hash;
+const params = hash ? new URLSearchParams(hash.substring(1)) : new URLSearchParams();
+const token = params.get('access_token');
+const error = params.get('error');
+
+document.getElementById('currentUrl').textContent = window.location.href;
+document.getElementById('origin').textContent = window.location.origin;
+document.getElementById('pathname').textContent = window.location.pathname;
+document.getElementById('hashPresent').textContent = hash ? 'YES — ' + hash.substring(0,80) + '…' : 'NO';
+document.getElementById('hashPresent').className = 'val ' + (hash ? 'ok' : 'none');
+document.getElementById('tokenFound').textContent = token ? 'YES ✓' : 'NO';
+document.getElementById('tokenFound').className = 'val ' + (token ? 'ok' : 'none');
+document.getElementById('errorFound').textContent = error ? 'YES: ' + error + ' — ' + (params.get('error_description')||'') : 'NO';
+document.getElementById('errorFound').className = 'val ' + (error ? 'err' : 'none');
+document.getElementById('tokenPreview').textContent = token ? token.substring(0,60) + '…' : '—';
+document.getElementById('tokenPreview').className = 'val ' + (token ? 'ok' : 'none');
+document.getElementById('redirectUri').textContent = window.location.origin + window.location.pathname;
+document.getElementById('fullHash').textContent = hash ? 'Full hash:\n' + hash : 'No hash in URL';
+
+function trySignIn() {
+  const redirectUri = window.location.origin + window.location.pathname;
+  const p = new URLSearchParams({
+    client_id: CLIENT_ID,
+    response_type: 'token',
+    redirect_uri: redirectUri,
+    scope: SCOPES,
+    response_mode: 'fragment',
+    prompt: 'select_account',
+    nonce: Math.random().toString(36).substring(2)
+  });
+  window.location.href = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize?${p}`;
+}
+</script>
+</div>
+</body>
+</html>
