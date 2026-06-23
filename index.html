@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Report Packager — Peschel Inspections</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231A2F4B'/%3E%3Cpolyline points='6,22 12,14 18,19 26,9' fill='none' stroke='%232E86C1' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpolygon points='24,5 29,10 26,9 23,6' fill='%23FFFFFF'/%3E%3C/svg%3E" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.10.0/lib/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --blue: #2E86C1; --blue-dark: #1a6fa3; --navy: #1A2F4B;
+    --gray: #78828C; --border: #E2E8ED; --bg: #F5F7FA; --white: #FFFFFF;
+    --success: #1a7f37; --error: #c0392b; --radius: 10px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--navy); min-height: 100vh; display: flex; flex-direction: column; }
+  header { background: var(--white); border-bottom: 1px solid var(--border); padding: 0 2rem; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .header-brand { display: flex; align-items: center; gap: 10px; }
+  .header-accent { width: 4px; height: 28px; background: var(--blue); border-radius: 2px; }
+  .header-title { font-size: 15px; font-weight: 600; color: var(--navy); }
+  .header-sub { font-size: 12px; color: var(--gray); margin-top: 1px; }
+  #userBadge { display: none; align-items: center; gap: 8px; background: #EBF4FB; border-radius: 20px; padding: 5px 12px 5px 6px; font-size: 13px; }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+  .uname { color: var(--navy); font-weight: 500; }
+  .signout-btn { background: none; border: none; font-size: 12px; color: var(--blue); cursor: pointer; padding: 0; margin-left: 4px; }
+  .signout-btn:hover { text-decoration: underline; }
+  main { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; }
+  .card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); width: 100%; max-width: 600px; padding: 2rem; }
+  #authScreen { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; padding: 1rem 0; }
+  .auth-lock { width: 64px; height: 64px; border-radius: 50%; background: #EBF4FB; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .auth-title { font-size: 18px; font-weight: 600; color: var(--navy); text-align: center; }
+  .auth-sub { font-size: 14px; color: var(--gray); text-align: center; line-height: 1.6; max-width: 340px; }
+  .ms-btn { display: flex; align-items: center; gap: 12px; background: #0078D4; color: #fff; border: none; border-radius: 6px; padding: 12px 24px; font-size: 15px; font-weight: 500; cursor: pointer; transition: background 0.15s; }
+  .ms-btn:hover { background: #006BBD; }
+  .ms-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .auth-note { font-size: 12px; color: var(--gray); display: flex; align-items: center; gap: 6px; }
+  #authStatus { font-size: 13px; text-align: center; min-height: 18px; color: var(--gray); }
+  #authStatus.err { color: var(--error); }
+  #appScreen { display: none; }
+  .section-label { font-size: 11px; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: 0.07em; display: flex; align-items: center; gap: 8px; margin: 1.5rem 0 0.75rem; }
+  .section-label::before, .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .section-label:first-child { margin-top: 0; }
+  .lookup-row { display: flex; gap: 8px; }
+  .lookup-row input { flex: 1; height: 42px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; color: var(--navy); outline: none; transition: border 0.15s; }
+  .lookup-row input:focus { border-color: var(--blue); }
+  .lookup-btn { height: 42px; padding: 0 18px; background: var(--blue); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 7px; white-space: nowrap; transition: background 0.15s; }
+  .lookup-btn:hover:not(:disabled) { background: var(--blue-dark); }
+  .lookup-btn:disabled { background: #B0C4D8; cursor: not-allowed; }
+  .fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: 0.05em; }
+  .field-val { font-size: 14px; font-weight: 500; color: var(--navy); background: var(--bg); border-radius: 7px; padding: 7px 11px; min-height: 34px; display: flex; align-items: center; }
+  .field-val.empty { color: #B0BAC5; font-weight: 400; font-style: italic; font-size: 13px; }
+  .filename-preview { font-size: 12px; color: var(--gray); background: var(--bg); border-radius: 7px; padding: 7px 11px; margin-top: 10px; font-family: monospace; display: none; word-break: break-all; }
+  .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 1.5rem; text-align: center; cursor: pointer; transition: all 0.15s; position: relative; background: var(--white); }
+  .drop-zone:hover, .drop-zone.drag { background: #EBF4FB; border-color: var(--blue); }
+  .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .drop-icon { font-size: 2rem; margin-bottom: 6px; }
+  .drop-text { font-size: 13px; color: var(--gray); }
+  .drop-text strong { color: var(--navy); }
+  .file-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .file-item { display: flex; align-items: center; gap: 8px; background: var(--bg); border-radius: 7px; padding: 7px 10px; font-size: 13px; }
+  .file-item-name { flex: 1; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-rm { background: none; border: none; cursor: pointer; color: var(--gray); font-size: 16px; line-height: 1; padding: 2px; }
+  .file-rm:hover { color: var(--error); }
+  .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .photo-thumb { position: relative; aspect-ratio: 1; border-radius: 7px; overflow: hidden; background: var(--bg); }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-rm { position: absolute; top: 3px; right: 3px; background: rgba(0,0,0,0.55); border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+  .notes-box { width: 100%; min-height: 90px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; color: var(--navy); font-family: inherit; resize: vertical; outline: none; transition: border 0.15s; line-height: 1.5; position: relative; z-index: 1; }
+  .notes-box:focus { border-color: var(--blue); }
+  .notes-box::placeholder { color: #B0BAC5; }
+  .clear-btn { width: 100%; height: 40px; margin-top: 8px; background: none; color: var(--gray); border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; cursor: pointer; transition: all 0.15s; }
+  .clear-btn:hover { background: #fff0f0; border-color: var(--error); color: var(--error); } margin-top: 10px; font-size: 13px; color: var(--navy); cursor: pointer; user-select: none; }
+  .check-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--blue); cursor: pointer; flex-shrink: 0; } background: var(--blue); color: #fff; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 9px; transition: background 0.15s; }
+  .build-btn:hover:not(:disabled) { background: var(--blue-dark); }
+  .build-btn:disabled { background: #B0C4D8; cursor: not-allowed; }
+  .progress-wrap { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 10px; display: none; }
+  .progress-bar { height: 100%; background: var(--blue); width: 0%; transition: width 0.3s; }
+  #statusMsg { font-size: 13px; color: var(--gray); text-align: center; margin-top: 8px; min-height: 18px; }
+  #statusMsg.ok { color: var(--success); }
+  #statusMsg.err { color: var(--error); }
+  footer { text-align: center; padding: 1.5rem; font-size: 12px; color: var(--gray); border-top: 1px solid var(--border); }
+  @media (max-width: 500px) { .card { padding: 1.25rem; } .fields-grid { grid-template-columns: 1fr; } .photo-grid { grid-template-columns: repeat(3, 1fr); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; animation: spin 0.8s linear infinite; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <div class="header-accent"></div>
+    <div>
+      <div class="header-title">Report Packager</div>
+      <div class="header-sub">Peschel Inspections LLC</div>
+    </div>
+  </div>
+  <div id="userBadge">
+    <div class="avatar" id="userInitials">PI</div>
+    <span class="uname" id="userName">Signed in</span>
+    <button class="signout-btn" onclick="signOut()">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <div id="authScreen">
+      <div class="auth-lock">🔒</div>
+      <div class="auth-title">Sign in to continue</div>
+      <div class="auth-sub">Your Peschel Inspections Microsoft account is required to access job data and generate reports.</div>
+      <button class="ms-btn" id="signInBtn" onclick="signIn()">
+        <svg viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+          <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+          <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+          <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+        </svg>
+        Sign in with Microsoft
+      </button>
+      <div class="auth-note">🔐 Restricted to Peschel Inspections accounts only</div>
+      <div id="authStatus"></div>
+    </div>
+
+    <div id="appScreen">
+      <div class="section-label">Job lookup</div>
+      <div class="lookup-row">
+        <input type="text" id="jobId" placeholder="Enter Job / Inspection ID" onkeydown="if(event.key==='Enter')fetchJob()" />
+        <button class="lookup-btn" id="fetchBtn" onclick="fetchJob()">🔍 Look up</button>
+      </div>
+      <div class="fields-grid">
+        <div class="field"><label>Job ID</label><div class="field-val empty" id="f-id">—</div></div>
+        <div class="field"><label>Bank / Lender</label><div class="field-val empty" id="f-bank">—</div></div>
+        <div class="field" style="grid-column:1/-1"><label>Street address</label><div class="field-val empty" id="f-addr">—</div></div>
+        <div class="field"><label>City, state</label><div class="field-val empty" id="f-city">—</div></div>
+        <div class="field"><label>Borrower</label><div class="field-val empty" id="f-borrower">—</div></div>
+        <div class="field"><label>Builder</label><div class="field-val empty" id="f-builder">—</div></div>
+        <div class="field"><label>Report date</label><div class="field-val empty" id="f-date">—</div></div>
+      </div>
+      <div class="filename-preview" id="filenamePreview"></div>
+
+      <div class="section-label">Inspection notes</div>
+      <textarea class="notes-box" id="inspectionNotes" placeholder="Enter inspection notes, observations, or comments to appear on the cover sheet…"></textarea>
+
+      <div class="section-label">Draw sheet</div>
+      <div class="drop-zone" id="drawDrop" ondragover="dragOver(event,'drawDrop')" ondragleave="dragLeave('drawDrop')" ondrop="dropFile(event,'draw')">
+        <input type="file" id="drawFile" accept=".pdf,.xlsx,.xls,.docx,.doc,image/*" onchange="addDraw(this)" />
+        <div class="drop-icon">📋</div>
+        <div class="drop-text"><strong>Click or drop draw sheet</strong><br>PDF, Excel, Word, or image &nbsp;·&nbsp; <em>optional</em></div>
+      </div>
+      <div class="file-list" id="drawList"></div>
+
+      <div class="section-label">Photos <span id="photoCount" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;">(0 added)</span></div>
+      <div class="drop-zone" id="photoDrop" ondragover="dragOver(event,'photoDrop')" ondragleave="dragLeave('photoDrop')" ondrop="dropFile(event,'photo')">
+        <input type="file" id="photoFiles" accept="image/*" multiple onchange="addPhotos(this)" />
+        <div class="drop-icon">📷</div>
+        <div class="drop-text"><strong>Click or drop photos</strong><br>Select multiple — laid out 6 per page</div>
+      </div>
+      <div class="photo-grid" id="photoGrid"></div>
+      <label class="check-row">
+        <input type="checkbox" id="useFilenameLabels" />
+        Label photos with filename instead of "Photo 1, Photo 2…"
+      </label>
+
+      <button class="build-btn" id="genBtn" onclick="generatePDF()" disabled>⬇️ Build &amp; download PDF</button>
+      <button class="clear-btn" onclick="clearAll()">🗑 Clear &amp; start new job</button>
+      <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div id="statusMsg"></div>
+    </div>
+  </div>
+</main>
+
+<footer>Peschel Inspections LLC &nbsp;·&nbsp; Confidential — Authorized use only</footer>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────
+const CLIENT_ID = '5e13bcf8-9861-419d-b3f2-5566be1e3948';
+const TENANT_ID = 'peschelinspections.onmicrosoft.com';
+const SP_SITE   = 'https://peschelinspections.sharepoint.com/sites/Operations';
+const SP_LIST   = 'Operations';
+const SP_SCOPES = ['https://peschelinspections.sharepoint.com/Sites.Read.All', 'https://peschelinspections.sharepoint.com/Files.ReadWrite.All'];
+const GRAPH_SCOPES = ['User.Read'];
+
+// ── MSAL SETUP ────────────────────────────────────────────────────────────
+const msalConfig = {
+  auth: {
+    clientId: CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+    redirectUri: window.location.origin + window.location.pathname,
+    postLogoutRedirectUri: window.location.origin + window.location.pathname,
+  },
+  cache: {
+    cacheLocation: 'localStorage',   // persists across tabs and browser restarts
+    storeAuthStateInCookie: true,    // IE11 / Edge fallback
+  }
+};
+
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+let jobData = null, drawFiles = [], photoFilesList = [];
+
+// ── BOOT ──────────────────────────────────────────────────────────────────
+async function boot() {
+  await msalInstance.initialize();
+  // Handle redirect response first (fires after Microsoft sends user back)
+  try {
+    const response = await msalInstance.handleRedirectPromise();
+    if (response) {
+      // Just came back from Microsoft login — set active account
+      msalInstance.setActiveAccount(response.account);
+    }
+  } catch(e) {
+    setAuthStatus('Sign-in error: ' + e.message, 'err');
+    return;
+  }
+
+  // Check if already signed in
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    msalInstance.setActiveAccount(accounts[0]);
+    showApp(accounts[0]);
+  }
+  // Otherwise stay on sign-in screen
+}
+
+// ── AUTH ──────────────────────────────────────────────────────────────────
+async function signIn() {
+  setAuthStatus('Redirecting to Microsoft…');
+  document.getElementById('signInBtn').disabled = true;
+  try {
+    await msalInstance.loginRedirect({
+      scopes: [...GRAPH_SCOPES, ...SP_SCOPES],
+      prompt: 'select_account'
+    });
+  } catch(e) {
+    setAuthStatus('Could not start sign-in: ' + e.message, 'err');
+    document.getElementById('signInBtn').disabled = false;
+  }
+}
+
+async function signOut() {
+  await msalInstance.logoutRedirect({
+    account: msalInstance.getActiveAccount()
+  });
+}
+
+function showApp(account) {
+  const name = account.name || account.username || 'Peschel User';
+  const initials = name.split(' ').map(w => w[0]).join('').substring(0,2).toUpperCase();
+  document.getElementById('userInitials').textContent = initials;
+  document.getElementById('userName').textContent = name;
+  document.getElementById('userBadge').style.display = 'flex';
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+}
+
+function setAuthStatus(msg, cls) {
+  const el = document.getElementById('authStatus');
+  el.textContent = msg; el.className = cls || '';
+}
+
+// ── GET TOKEN (auto-refreshes silently all day) ───────────────────────────
+async function getToken(scopes) {
+  const account = msalInstance.getActiveAccount();
+  if (!account) throw new Error('Not signed in');
+  try {
+    // Silent refresh — uses cached token or refreshes automatically
+    const result = await msalInstance.acquireTokenSilent({ scopes, account });
+    return result.accessToken;
+  } catch(e) {
+    if (e instanceof msal.InteractionRequiredAuthError) {
+      // Silent refresh failed — need user interaction (very rare, e.g. password changed)
+      await msalInstance.acquireTokenRedirect({ scopes, account });
+    }
+    throw e;
+  }
+}
+
+// ── JOB LOOKUP ────────────────────────────────────────────────────────────
+async function fetchJob() {
+  const idVal = document.getElementById('jobId').value.trim();
+  if (!idVal) { setStatus('Enter a Job ID first.', 'err'); return; }
+  const btn = document.getElementById('fetchBtn');
+  btn.disabled = true; btn.textContent = '⏳ Fetching…';
+  setStatus('Looking up Job ' + idVal + '…'); jobData = null;
+  try {
+    const token = await getToken(SP_SCOPES);
+    const url = `${SP_SITE}/_api/web/lists(guid'e515e0b2-bf58-40ed-8504-5896cee08684')/items?$filter=ID eq ${idVal}&$top=1`;
+    const r = await fetch(url, { headers: { Accept: 'application/json;odata=verbose', Authorization: 'Bearer ' + token } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const results = data?.d?.results || [];
+    if (!results.length) { setStatus('No record found for ID ' + idVal + '.', 'err'); btn.disabled=false; btn.textContent='🔍 Look up'; return; }
+    const row = results[0];
+    jobData = {
+      id: String(row.ID || idVal),
+      address: row.Street_x0020_Address || row.StreetAddress || row.Address || '',
+      city: row['City_x002c_State'] || row['City_x002c__x0020_State'] || row.CityState || row.City || '',
+      bank: row.Bank || row.Lender || '',
+      borrower: row.Borrower || '',
+      builder: row.Builder || '',
+    };
+    const today = new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'});
+    setField('f-id',jobData.id); setField('f-addr',jobData.address); setField('f-city',jobData.city);
+    setField('f-bank',jobData.bank); setField('f-borrower',jobData.borrower); setField('f-builder',jobData.builder);
+    setField('f-date',today);
+    updateFilename(); setStatus('Job ' + idVal + ' loaded.', 'ok'); checkReady();
+  } catch(e) { setStatus('Error: ' + e.message, 'err'); }
+  btn.disabled = false; btn.textContent = '🔍 Look up';
+}
+
+function setField(id, val) {
+  const el = document.getElementById(id);
+  if (val) { el.textContent = val; el.classList.remove('empty'); }
+  else { el.textContent = '—'; el.classList.add('empty'); }
+}
+function buildFilename() {
+  const d = new Date();
+  const datePart = `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}-${d.getFullYear()}`;
+  if(!jobData) return `PeschelInspections_Photos_${datePart}.pdf`;
+  const addr = (jobData.address||'UnknownAddress').replace(/[^a-zA-Z0-9 ]/g,'').trim().replace(/\s+/g,'_');
+  return `PeschelInspections_${addr}_${datePart}.pdf`;
+}
+function updateFilename() {
+  const el = document.getElementById('filenamePreview'), name = buildFilename();
+  if (name) { el.textContent = '📄 ' + name; el.style.display = 'block'; }
+  else { el.style.display = 'none'; }
+}
+
+// ── FILES ─────────────────────────────────────────────────────────────────
+function dragOver(e,id){e.preventDefault();document.getElementById(id).classList.add('drag');}
+function dragLeave(id){document.getElementById(id).classList.remove('drag');}
+function dropFile(e,type){
+  e.preventDefault();dragLeave(type==='draw'?'drawDrop':'photoDrop');
+  const files=Array.from(e.dataTransfer.files);
+  if(type==='draw'){drawFiles=[files[0]];renderDrawList();}else{photoFilesList=[...photoFilesList,...files];renderPhotos();}
+  checkReady();
+}
+function addDraw(input){if(input.files[0]){drawFiles=[input.files[0]];renderDrawList();checkReady();}}
+function addPhotos(input){photoFilesList=[...photoFilesList,...Array.from(input.files)];renderPhotos();checkReady();}
+function removePhoto(i){photoFilesList.splice(i,1);renderPhotos();checkReady();}
+function removeDraw(){drawFiles=[];renderDrawList();checkReady();}
+function renderDrawList(){
+  document.getElementById('drawList').innerHTML=drawFiles.map(f=>`
+    <div class="file-item"><span>📋</span>
+    <span class="file-item-name">${f.name}</span>
+    <button class="file-rm" onclick="removeDraw()">✕</button></div>`).join('');
+}
+function renderPhotos(){
+  document.getElementById('photoCount').textContent=`(${photoFilesList.length} added)`;
+  document.getElementById('photoGrid').innerHTML=photoFilesList.map((f,i)=>
+    `<div class="photo-thumb"><img src="${URL.createObjectURL(f)}" alt="Photo ${i+1}"/>
+    <button class="photo-rm" onclick="removePhoto(${i})">✕</button></div>`).join('');
+}
+function clearAll(){
+  jobData=null; drawFiles=[]; photoFilesList=[];
+  document.getElementById('jobId').value='';
+  ['f-id','f-bank','f-addr','f-city','f-borrower','f-builder','f-date'].forEach(id=>setField(id,null));
+  document.getElementById('filenamePreview').style.display='none';
+  document.getElementById('inspectionNotes').value='';
+  document.getElementById('drawList').innerHTML='';
+  document.getElementById('drawFile').value='';
+  document.getElementById('photoGrid').innerHTML='';
+  document.getElementById('photoFiles').value='';
+  document.getElementById('photoCount').textContent='(0 added)';
+  document.getElementById('useFilenameLabels').checked=false;
+  setStatus('');
+  checkReady();
+}
+function setStatus(msg,cls){const el=document.getElementById('statusMsg');el.textContent=msg;el.className=cls||'';}
+function setProgress(pct){
+  const wrap=document.getElementById('progressWrap'),bar=document.getElementById('progressBar');
+  if(pct===null){wrap.style.display='none';return;}wrap.style.display='block';bar.style.width=pct+'%';
+}
+
+// ── PDF ───────────────────────────────────────────────────────────────────
+function fileToDataURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});}
+function imgDims(dataUrl){return new Promise(res=>{const img=new Image();img.onload=()=>res({w:img.width,h:img.height});img.src=dataUrl;});}
+
+// Compress + resize image to fit within maxW x maxH at given JPEG quality (0-1)
+function compressImage(file, maxW, maxH, quality=0.72){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      const scale=Math.min(1, maxW/img.width, maxH/img.height);
+      const w=Math.round(img.width*scale);
+      const h=Math.round(img.height*scale);
+      const canvas=document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      res({dataUrl:canvas.toDataURL('image/jpeg',quality), w, h});
+    };
+    img.onerror=rej;
+    img.src=url;
+  });
+}
+
+
+async function generatePDF(){
+  const btn=document.getElementById('genBtn');
+  btn.disabled=true;btn.textContent='⏳ Building PDF…';
+  setProgress(5);setStatus('Building cover sheet…');
+  try{
+    const useFilenames = document.getElementById('useFilenameLabels').checked;
+    const notes = document.getElementById('inspectionNotes').value.trim();
+    const{jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:'portrait',unit:'pt',format:'letter'});
+    const PW=612,PH=792,M=54,CW=PW-M*2;
+    const BLUE=[46,134,193],NAVY=[26,47,75],GRAY=[120,130,140];
+    const accentBar=(y,thick=6)=>{pdf.setFillColor(...BLUE);pdf.rect(M,y,CW,thick,'F');};
+    const labelVal=(label,val,x,y)=>{
+      pdf.setFont('helvetica','bold');pdf.setFontSize(9);pdf.setTextColor(...NAVY);pdf.text(label,x,y);
+      pdf.setFont('helvetica','normal');pdf.setTextColor(...GRAY);pdf.text(val||'—',x+115,y);
+    };
+    const today=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+
+    let firstPage = true; // track if we've added any pages yet
+
+    if(jobData){
+      // Cover sheet
+      accentBar(M);
+    try{
+      const logoResp=await fetch('./peschel_logo.png');
+      if(logoResp.ok){const blob=await logoResp.blob();const ld=await fileToDataURL(blob);pdf.addImage(ld,'PNG',PW/2-85,M+18,170,134);}
+    }catch(e){}
+    pdf.setFont('helvetica','bold');pdf.setFontSize(18);pdf.setTextColor(...NAVY);
+    pdf.text('INSPECTION REPORT',PW/2,M+178,{align:'center'});
+    pdf.setFont('helvetica','italic');pdf.setFontSize(10);pdf.setTextColor(...GRAY);
+    pdf.text('Prepared by Peschel Inspections LLC',PW/2,M+196,{align:'center'});
+    accentBar(M+210,2);
+    let y=M+244;
+    pdf.setFont('helvetica','bold');pdf.setFontSize(9);pdf.setTextColor(...BLUE);pdf.text('REPORT DETAILS',M,y);y+=18;
+    labelVal('Report Date:',today,M,y);y+=16;
+    labelVal('Street Address:',jobData.address,M,y);y+=16;
+    labelVal('City, State:',jobData.city,M,y);y+=26;
+    accentBar(y,1);y+=18;
+    pdf.setFont('helvetica','bold');pdf.setFontSize(9);pdf.setTextColor(...BLUE);pdf.text('CLIENT & PROJECT INFORMATION',M,y);y+=18;
+    labelVal('Bank / Lender:',jobData.bank,M,y);y+=16;
+    labelVal('Borrower:',jobData.borrower,M,y);y+=16;
+    labelVal('Builder:',jobData.builder,M,y);y+=26;
+
+    // Notes section
+    if(notes){
+      accentBar(y,1);y+=18;
+      pdf.setFont('helvetica','bold');pdf.setFontSize(9);pdf.setTextColor(...BLUE);
+      pdf.text('INSPECTION NOTES',M,y);y+=14;
+      pdf.setFont('helvetica','normal');pdf.setFontSize(9);pdf.setTextColor(...NAVY);
+      const lines=pdf.splitTextToSize(notes,CW);
+      lines.forEach(line=>{
+        if(y>PH-M-80){return;}
+        pdf.text(line,M,y);y+=13;
+      });
+    }
+
+    accentBar(PH-M-32,2);
+    pdf.setFont('helvetica','normal');pdf.setFontSize(8);pdf.setTextColor(...GRAY);
+    pdf.text('Peschel Inspections LLC  ·  Independent Construction Inspection Services',PW/2,PH-M-12,{align:'center'});
+    pdf.text('Confidential — For Authorized Recipients Only',PW/2,PH-M-2,{align:'center'});
+    accentBar(PH-M+8);
+      firstPage = false;
+    } // end jobData cover sheet
+
+    // Photo pages
+    setProgress(20);setStatus('Adding photos…');
+    const COLS=2,ROWS=3,PER_PAGE=6,PAD=8;
+    const cellW=(CW-PAD*(COLS-1))/COLS,cellH=(PH-M*2-PAD*(ROWS-1))/ROWS;
+    for(let i=0;i<photoFilesList.length;i++){
+      if(i%PER_PAGE===0){
+        if(firstPage){ firstPage=false; } else { pdf.addPage(); }
+        accentBar(M-10,2);
+        pdf.setFont('helvetica','bold');pdf.setFontSize(8);pdf.setTextColor(...GRAY);
+        const header = jobData ? `${jobData.address}  ·  Photo page ${Math.floor(i/PER_PAGE)+1}` : `Photo page ${Math.floor(i/PER_PAGE)+1}`;
+        pdf.text(header,PW/2,M-16,{align:'center'});
+      }
+      const col=i%PER_PAGE%COLS,row=Math.floor(i%PER_PAGE/COLS);
+      const cx=M+col*(cellW+PAD),cy=M+row*(cellH+PAD);
+      try{
+        // Compress to max cell pixel size at 1.5x for decent screen/print quality
+        const maxPx = Math.round(Math.max(cellW, cellH) * 1.5);
+        const {dataUrl:pData, w:iw, h:ih} = await compressImage(photoFilesList[i], maxPx, maxPx, 0.72);
+        const scale=Math.min(cellW/iw,cellH/ih);const pw=iw*scale,ph=ih*scale;
+        pdf.addImage(pData,'JPEG',cx+(cellW-pw)/2,cy+(cellH-ph)/2,pw,ph,undefined,'FAST');
+        pdf.setDrawColor(210,220,228);pdf.setLineWidth(0.5);pdf.rect(cx,cy,cellW,cellH);
+        pdf.setFont('helvetica','normal');pdf.setFontSize(7);pdf.setTextColor(...GRAY);
+        const rawName = photoFilesList[i].name.replace(/\.[^/.]+$/,''); // strip extension
+        const label = useFilenames ? pdf.splitTextToSize(rawName, cellW-8)[0] : `Photo ${i+1}`;
+        pdf.text(label,cx+4,cy+cellH-4);
+      }catch(e){}
+      setProgress(20+Math.round(((i+1)/photoFilesList.length)*50));
+    }
+
+    // Get jsPDF output as ArrayBuffer
+    setProgress(72);setStatus('Merging draw sheet…');
+    const coverAndPhotoBytes = pdf.output('arraybuffer');
+
+    // Merge with draw sheet PDF using pdf-lib
+    const { PDFDocument } = PDFLib;
+    const finalDoc = await PDFDocument.load(coverAndPhotoBytes);
+
+    if(drawFiles[0]){
+      const df=drawFiles[0];
+      if(df.type==='application/pdf'){
+        try{
+          const drawBytes=await df.arrayBuffer();
+          const drawDoc=await PDFDocument.load(drawBytes);
+          const pageCount=drawDoc.getPageCount();
+          const copiedPages=await finalDoc.copyPages(drawDoc,[...Array(pageCount).keys()]);
+          // Insert draw sheet pages after cover (page index 1), before photos
+          // Cover is page 0, photos start at page 1
+          // We insert draw pages at position 1
+          copiedPages.forEach((page,idx)=>finalDoc.insertPage(1+idx,page));
+        }catch(e){
+          setStatus('Draw sheet merge error: '+e.message+' — continuing without it.','err');
+        }
+      } else if(df.type.startsWith('image/')){
+        // Image draw sheet — compress and embed as a page inserted after cover
+        const {dataUrl:dData, w:dw2, h:dh2} = await compressImage(df, CW*1.5, (PH-M*2)*1.5, 0.82);
+        const tempPdf=new jsPDF({orientation:'portrait',unit:'pt',format:'letter'});
+        const scale=Math.min(CW/dw2,(PH-M*2)/dh2);
+        const dw=dw2*scale,dh=dh2*scale;
+        tempPdf.addImage(dData,'JPEG',M+(CW-dw)/2,M,dw,dh);
+        const imgPageBytes=tempPdf.output('arraybuffer');
+        const imgDoc=await PDFDocument.load(imgPageBytes);
+        const [imgPage]=await finalDoc.copyPages(imgDoc,[0]);
+        finalDoc.insertPage(1,imgPage);
+      }
+    }
+
+    setProgress(92);setStatus('Saving…');
+    const finalBytes=await finalDoc.save();
+    const filename=buildFilename();
+
+    // Download to local machine
+    const blob=new Blob([finalBytes],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=filename;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+
+    // Upload to SharePoint Reporting folder
+    setProgress(95);setStatus('Uploading to SharePoint Reporting folder…');
+    try{
+      const spToken=await getToken(['https://peschelinspections.sharepoint.com/Files.ReadWrite.All']);
+      const folderPath='/sites/Operations/Shared Documents/Reporting';
+      const uploadUrl=`https://peschelinspections.sharepoint.com/sites/Operations/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(overwrite=true,url='${encodeURIComponent(filename)}')`;
+      const uploadResp=await fetch(uploadUrl,{
+        method:'POST',
+        headers:{
+          'Authorization':'Bearer '+spToken,
+          'Accept':'application/json;odata=verbose',
+          'Content-Type':'application/octet-stream',
+        },
+        body:finalBytes
+      });
+      if(!uploadResp.ok){
+        const errText=await uploadResp.text();
+        throw new Error('HTTP '+uploadResp.status+' — '+errText.substring(0,200));
+      }
+      setProgress(null);
+      setStatus(`✓ Downloaded & saved to SharePoint › Reporting: ${filename}`,'ok');
+    }catch(uploadErr){
+      setProgress(null);
+      setStatus(`✓ Downloaded locally — SharePoint upload failed: ${uploadErr.message}`,'err');
+    }
+  }catch(err){setStatus('Error: '+err.message,'err');setProgress(null);}
+  btn.disabled=false;btn.textContent='⬇️ Build & download PDF';
+  checkReady();
+}
+
+// ── START ─────────────────────────────────────────────────────────────────
+boot();
+</script>
+</body>
+</html>
